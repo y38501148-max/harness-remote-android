@@ -25,6 +25,8 @@ class SignedReleaseTest {
         val request=device.wait(Until.findObject(By.text("请求连接")),20000)
         assertNotNull("Pinned pairing page opened",request);device.waitForIdle();request.click()
         assertTrue("Real Harness client opened",device.wait(Until.hasObject(By.textContains("Into the Unknown")),30000) || device.hasObject(By.text("Internal Testing Notice")) || device.hasObject(By.text("Choose workspace")))
+        device.findObject(By.text("Continue"))?.click();device.waitForIdle()
+        assertTrue("Onboarding can be acknowledged from Android",device.wait(Until.gone(By.text("Internal Testing Notice")),10000))
         device.takeScreenshot(java.io.File(instrumentation.targetContext.getExternalFilesDir(null),"signed-paired.png"))
     }
     @Test fun restoresAfterCoverInstall(){

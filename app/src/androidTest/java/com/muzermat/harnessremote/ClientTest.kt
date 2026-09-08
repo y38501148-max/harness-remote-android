@@ -65,7 +65,7 @@ class ClientTest {
             val device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             assertTrue("System document picker opened",device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")),10000))
             device.waitForIdle();device.findObject(By.desc("Show roots"))?.click();device.waitForIdle();Thread.sleep(400)
-            device.findObject(By.text("Downloads"))?.click();device.waitForIdle();Thread.sleep(400)
+            device.findObject(By.res("android:id/title").text("Downloads"))?.click();device.waitForIdle();Thread.sleep(400)
             val selected=device.wait(Until.findObject(By.text("harness-remote-qa.txt")),5000)
             assertNotNull("Test file visible in Downloads",selected);selected.click()
             until(s,"window.__qa.pickerName==='harness-remote-qa.txt' && window.__qa.pickerText.includes('UTF-8')")
