@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run against the plugin repository's isolated scripts/android-fixture.mjs Host."""
-import json, os, pathlib, subprocess, urllib.parse, urllib.request
+import json, os, pathlib, subprocess, time, urllib.parse, urllib.request
 root=pathlib.Path(__file__).resolve().parents[1]
 os.environ.setdefault('ANDROID_SERIAL','emulator-5554')
 sdk=pathlib.Path(os.environ.get('ANDROID_HOME',str(pathlib.Path.home()/'Library/Android/sdk')))
@@ -16,6 +16,8 @@ subprocess.run([adb,'shell','rm','-f','/sdcard/Download/harness-native-download.
 for apk in ['app/build/outputs/apk/debug/app-debug.apk','app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk']:
     subprocess.run([adb,'install','-r',str(root/apk)],check=True)
 subprocess.run([adb,'shell','pm','clear','com.muzermat.harnessremote.debug'],check=True)
+# Package data clearing removes old tasks asynchronously; let it settle before instrumentation.
+time.sleep(1.5)
 # ADB concatenates shell arguments; quote the URL as shell data, never print its invitation.
 result=subprocess.run([adb,'shell','am','instrument','-w','-r','-e','class','com.muzermat.harnessremote.ClientTest','-e','pairing',"'"+pairing+"'",'com.muzermat.harnessremote.debug.test/androidx.test.runner.AndroidJUnitRunner'],capture_output=True,text=True)
 print(result.stdout)
