@@ -42,7 +42,7 @@ node scripts/android-fixture.mjs
 python3 scripts/run-emulator-test.py
 ```
 
-测试脚本仅清除 `.debug` 应用数据。测试二维码通过 debug-only Intent 传入，发行版忽略该入口；隔离 Host 的待批准设备由测试 helper 自动批准，生产插件仍需电脑手动批准。
+`run-emulator-test.py` 仅清除 `.debug` 应用数据。签名包验收另用 `python3 scripts/run-signed-smoke.py`；它在测试模拟器中清除发行包数据、通过正常粘贴配对界面连接，再验证覆盖安装和进程重启。两个脚本默认设备为 `emulator-5554`，日常手机不应作为清空数据的测试目标。测试二维码通过 debug-only Intent 传入，发行版忽略该入口；隔离 Host 的待批准设备由测试 helper 自动批准，生产插件仍需电脑手动批准。
 
 ## 签名与发布
 

@@ -120,8 +120,8 @@ class MainActivity:ComponentActivity() {
                 try {
                     if(request.method !in listOf("GET","HEAD"))return blocked("请通过安全连接提交请求")
                     var req=client.request(request.url.toString(),request.method,request.requestHeaders)
-                    var response=client.client.newCall(req).execute();var redirects=0
-                    while(response.code in 300..399){check(++redirects<=3);val next=response.header("Location") ?: error("无效跳转");val resolved=req.url.resolve(next) ?: error("无效跳转");response.close();req=client.request(resolved.toString());response=client.client.newCall(req).execute()}
+                    var response=client.resourceClient.newCall(req).execute();var redirects=0
+                    while(response.code in 300..399){check(++redirects<=3);val next=response.header("Location") ?: error("无效跳转");val resolved=req.url.resolve(next) ?: error("无效跳转");response.close();req=client.request(resolved.toString());response=client.resourceClient.newCall(req).execute()}
                     val type=response.body?.contentType();val headers=response.headers.names().filter{it.lowercase() !in setOf("set-cookie","set-cookie2","content-length","content-encoding")}.associateWith{response.header(it) ?: ""}
                     return WebResourceResponse(if(type!=null)type.type+"/"+type.subtype else "application/octet-stream",type?.charset()?.name() ?: "UTF-8",response.code,response.message.ifBlank{"Response"},headers,response.body?.byteStream() ?: ByteArrayInputStream(byteArrayOf()))
                 }catch(e:Exception){return blocked("连接中断，请返回电脑列表重新连接。")}
@@ -146,7 +146,7 @@ class MainActivity:ComponentActivity() {
         val suggested=name.ifBlank{URLUtil.guessFileName(url,null,null)}.map{if(it.code<32 || it=='/' || it.code==92) '_' else it}.joinToString("").take(255)
         downloadUrl=url;saveFile.launch(suggested)
     }
-    private fun download(url:String,uri:Uri){val client=transport ?: return;worker.execute {try{client.client.newCall(client.request(url)).execute().use{r->check(r.isSuccessful){"下载授权失效"};val input=r.body?.byteStream() ?: error("文件为空");contentResolver.openOutputStream(uri,"w")!!.use{output->input.use{it.copyTo(output)}}};runOnUiThread{Toast.makeText(this,"文件已保存",Toast.LENGTH_LONG).show()}}catch(e:Exception){runOnUiThread{error(e)}}}}
+    private fun download(url:String,uri:Uri){val client=transport ?: return;worker.execute {try{client.resourceClient.newCall(client.request(url)).execute().use{r->check(r.isSuccessful){"下载授权失效"};val input=r.body?.byteStream() ?: error("文件为空");contentResolver.openOutputStream(uri,"w")!!.use{output->input.use{it.copyTo(output)}}};runOnUiThread{Toast.makeText(this,"文件已保存",Toast.LENGTH_LONG).show()}}catch(e:Exception){runOnUiThread{error(e)}}}}
     private fun checkUpdate(){
         Toast.makeText(this,"正在检查发布版本…",Toast.LENGTH_SHORT).show()
         worker.execute{try{

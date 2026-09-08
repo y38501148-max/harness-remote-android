@@ -37,6 +37,8 @@ class PinnedTransport(val host: HostProfile, private val loadCookie:()->String, 
                 if(host.owns(url)) cookies.find { it.name=="__Host-dsh_remote" && it.secure && it.httpOnly && it.hostOnly && it.path=="/" }?.let { saveCookie(it.toString()) }
             }
         }).build()
+    // Media and saved files may outlive an API call; stalled reads still time out.
+    val resourceClient:OkHttpClient=client.newBuilder().callTimeout(0,TimeUnit.MILLISECONDS).readTimeout(30,TimeUnit.SECONDS).build()
     fun request(url:String,method:String="GET",headers:Map<String,String> = emptyMap(),body:ByteArray?=null):Request {
         val resolved=host.base.resolve(url) ?: error("无效的请求地址")
         require(host.owns(resolved)) { "拒绝向其他地址发送电脑授权" }

@@ -17,7 +17,7 @@ for apk in ['app/build/outputs/apk/debug/app-debug.apk','app/build/outputs/apk/a
     subprocess.run([adb,'install','-r',str(root/apk)],check=True)
 subprocess.run([adb,'shell','pm','clear','com.muzermat.harnessremote.debug'],check=True)
 # ADB concatenates shell arguments; quote the URL as shell data, never print its invitation.
-result=subprocess.run([adb,'shell','am','instrument','-w','-r','-e','pairing',"'"+pairing+"'",'com.muzermat.harnessremote.debug.test/androidx.test.runner.AndroidJUnitRunner'],capture_output=True,text=True)
+result=subprocess.run([adb,'shell','am','instrument','-w','-r','-e','class','com.muzermat.harnessremote.ClientTest','-e','pairing',"'"+pairing+"'",'com.muzermat.harnessremote.debug.test/androidx.test.runner.AndroidJUnitRunner'],capture_output=True,text=True)
 print(result.stdout)
 if result.returncode or 'FAILURES' in result.stdout or 'Process crashed' in result.stdout or 'OK (1 test)' not in result.stdout:
     raise SystemExit(1)
