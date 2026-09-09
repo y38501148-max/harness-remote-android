@@ -48,8 +48,8 @@ class PinnedTransport(val host: HostProfile, private val loadCookie:()->String, 
         builder.method(method,if(method=="POST") (body ?: byteArrayOf()).toRequestBody(headers.entries.find { it.key.equals("content-type",true) }?.value?.toMediaTypeOrNull()) else null)
         return builder.build()
     }
-    fun verify():JSONObject {
-        client.newCall(request("/remote/info")).execute().use { response ->
+    fun verify(using:OkHttpClient=client):JSONObject {
+        using.newCall(request("/remote/info")).execute().use { response ->
             check(response.isSuccessful) { "电脑插件无法响应，请更新到支持安卓的版本" }
             val info=JSONObject(response.body?.string() ?: "{}")
             check(info.optString("hostId")==host.id) { "电脑身份已改变，请在电脑重新配对" }

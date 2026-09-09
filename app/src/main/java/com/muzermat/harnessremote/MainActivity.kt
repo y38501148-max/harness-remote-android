@@ -32,6 +32,8 @@ class MainActivity:ComponentActivity() {
     private var bridge:NativeBridge?=null
     private val worker=Executors.newFixedThreadPool(3)
     private var generation=0
+    private var lastHost:HostProfile?=null
+    private var keyboardVisible=false
     private var files:ValueCallback<Array<Uri>>?=null
     private var downloadUrl:String?=null
     private val picker=registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()){ uris -> files?.onReceiveValue(uris.toTypedArray());files=null }
@@ -44,35 +46,52 @@ class MainActivity:ComponentActivity() {
         super.onCreate(savedInstanceState);vault=Vault(this)
         root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setBackgroundColor(getColor(R.color.background)) }
         setContentView(root)
-        ViewCompat.setOnApplyWindowInsetsListener(root){v,insets->val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);insets}
-        onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){if(web!=null)home()else{isEnabled=false;onBackPressedDispatcher.onBackPressed()}}})
+        ViewCompat.setOnApplyWindowInsetsListener(root){v,insets->val bars=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime());v.setPadding(bars.left,bars.top,bars.right,bars.bottom);val shown=insets.isVisible(WindowInsetsCompat.Type.ime());if(shown!=keyboardVisible){keyboardVisible=shown;web?.evaluateJavascript("window.__HARNESS_KEYBOARD__=$shown;window.dispatchEvent(new CustomEvent('harness-keyboard',{detail:$shown}))",null)};insets}
+        onBackPressedDispatcher.addCallback(this,object:OnBackPressedCallback(true){override fun handleOnBackPressed(){if(web!=null)pageBack()else{isEnabled=false;onBackPressedDispatcher.onBackPressed()}}})
         home()
         val restoreId=savedInstanceState?.getString("activeHost") ?: intent.getStringExtra("openHost")
         val testPairing=if(BuildConfig.DEBUG && savedInstanceState==null)intent.getStringExtra("testPairing")else null
         if(testPairing!=null)pair(testPairing)
         else runCatching {val hosts=vault.hosts();val restore=hosts.find{it.id==restoreId} ?: if(savedInstanceState==null)hosts.singleOrNull()else null;restore?.let{connect(it)}}.onFailure{error(it)}
     }
-    private fun text(value:String,size:Float=18f)=TextView(this).apply {text=value;textSize=size;setTextColor(getColor(R.color.text));setPadding(20,16,20,16)}
+    private fun text(value:String,size:Float=18f)=TextView(this).apply {text=value;textSize=size;setTextColor(getColor(R.color.text));setPadding(dp(20),dp(10),dp(20),dp(10))}
     private fun dp(value:Int)=(value*resources.displayMetrics.density).toInt()
     private fun button(value:String,action:()->Unit)=Button(this).apply {
-        text=value;isAllCaps=false;setTextColor(getColor(R.color.text));minWidth=dp(48);minimumWidth=dp(48);minHeight=dp(44)
+        text=value;isAllCaps=false;stateListAnimator=null;elevation=0f;setTextColor(getColor(R.color.text));minWidth=dp(48);minimumWidth=dp(48);minHeight=dp(44)
         background=android.graphics.drawable.GradientDrawable().apply{setColor(getColor(R.color.card));cornerRadius=dp(12).toFloat()}
         setPadding(dp(14),dp(8),dp(14),dp(8));layoutParams=LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(8),dp(4),dp(8),dp(4))};setOnClickListener{action()}
     }
-    private fun error(t:Throwable) {AlertDialog.Builder(this).setTitle("连接未完成").setMessage(t.message ?: "请检查电脑地址和网络后重试").setPositiveButton("知道了",null).show()}
+    private fun primaryButton(value:String,action:()->Unit)=button(value,action).apply{setTextColor(Color.WHITE);background=android.graphics.drawable.GradientDrawable().apply{setColor(getColor(R.color.accent));cornerRadius=dp(16).toFloat()}}
+    private fun pageBack(){val page=web ?: return home();page.evaluateJavascript("Boolean(window.__HARNESS_MOBILE_BACK__?.())"){handled->if(web===page && handled!="true")home()}}
+    private fun error(t:Throwable) {val dialog=AlertDialog.Builder(this).setTitle("连接未完成").setMessage(t.message ?: "请检查电脑地址和网络后重试").setPositiveButton("知道了",null);lastHost?.let{host->dialog.setNeutralButton("连接诊断"){_,_->diagnostics(host)}};dialog.show()}
+    private fun diagnostics(host:HostProfile){
+        val message=text("正在检查手机网络、电脑端口和连接身份…",14f).apply{setTextIsSelectable(true)}
+        val scroll=ScrollView(this).apply{addView(message)}
+        val dialog=AlertDialog.Builder(this).setTitle("连接诊断 · ${host.name}").setView(scroll).setPositiveButton("关闭",null).show()
+        worker.execute{val result=runCatching{ConnectionDiagnostics(this).run(host)}.getOrElse{"诊断未完成，请稍后重试。"};runOnUiThread{if(!isDestroyed&&dialog.isShowing)message.text=result}}
+    }
     private fun closePage(){generation++;bridge?.close();bridge=null;web?.apply{stopLoading();destroy()};web=null;transport?.close();transport=null;root.removeAllViews()}
     private fun home(){
         closePage()
-        root.addView(text("Harness Remote",28f));root.addView(text("扫码连接电脑，继续同一个任务。无需域名或安装证书。",16f))
-        root.addView(button("扫描电脑二维码"){scan.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("扫描电脑「手机远程」中的二维码").setBeepEnabled(false).setOrientationLocked(false))})
+        root.addView(text("Harness Remote",13f).apply{setTextColor(getColor(R.color.muted));setPadding(dp(24),dp(28),dp(24),dp(4))})
+        root.addView(text("把任务带在身边",28f).apply{setTypeface(typeface,android.graphics.Typeface.BOLD)})
+        root.addView(text("连接你的电脑，随时查看进度、继续对话。",15f).apply{setTextColor(getColor(R.color.muted))})
+        root.addView(primaryButton("扫描电脑二维码"){scan.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("扫描电脑「手机远程」中的二维码").setBeepEnabled(false).setOrientationLocked(false))})
         root.addView(button("粘贴配对链接"){val input=EditText(this).apply {hint="https://[IPv6]:8443/remote/pair#…";inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS};AlertDialog.Builder(this).setTitle("电脑配对链接").setView(input).setPositiveButton("连接"){_,_->pair(input.text.toString().trim())}.setNegativeButton("取消",null).show()})
         val scroll=ScrollView(this);val hosts=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL};scroll.addView(hosts);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        try {for(host in vault.hosts()){
-            hosts.addView(button(host.name+"\n"+host.origin){connect(host)})
-            hosts.addView(button("管理 ${host.name}"){manage(host)})
-        }}catch(e:Exception){error(e)}
+        try {
+            val known=vault.hosts()
+            hosts.addView(text(if(known.isEmpty())"第一次连接" else "你的电脑",14f).apply{setTextColor(getColor(R.color.muted))})
+            if(known.isEmpty())hosts.addView(text("在电脑「设置 → 手机远程」生成二维码，扫码后在电脑上批准连接。",14f).apply{setTextColor(getColor(R.color.muted))})
+            for(host in known){
+                val card=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(10));background=android.graphics.drawable.GradientDrawable().apply{setColor(getColor(R.color.card));cornerRadius=dp(20).toFloat()};layoutParams=LinearLayout.LayoutParams(-1,-2).apply{setMargins(dp(16),dp(6),dp(16),dp(8))}}
+                card.addView(button(host.name+"  ›"){connect(host)}.apply{textSize=19f;gravity=android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL})
+                card.addView(text("已保存电脑身份 · IPv6 直连",12f).apply{setTextColor(getColor(R.color.muted));setPadding(dp(16),0,dp(16),dp(8))})
+                val actions=LinearLayout(this);actions.addView(button("连接诊断"){diagnostics(host)},LinearLayout.LayoutParams(0,-2,1f));actions.addView(button("管理电脑"){manage(host)},LinearLayout.LayoutParams(0,-2,1f));card.addView(actions);hosts.addView(card)
+            }
+        }catch(e:Exception){error(e)}
         root.addView(button("检查更新 · ${BuildConfig.VERSION_NAME}"){checkUpdate()})
-        root.addView(text("公网 IPv6 直连取决于两端网络和电脑入站规则。后台或进程结束后，返回 App 会重新同步电脑任务。",13f))
+        root.addView(text("校外连接失败时，先运行连接诊断。电脑任务会继续运行。",12f).apply{setTextColor(getColor(R.color.muted))})
     }
     private fun manage(host:HostProfile){
         AlertDialog.Builder(this).setTitle(host.name).setItems(arrayOf("修改电脑地址","修改名称","忘记此电脑")){_,index->when(index){
@@ -83,7 +102,7 @@ class MainActivity:ComponentActivity() {
     }
     private fun pair(raw:String){try{val (host,url)=HostProfile.parsePairing(raw);connect(host,url)}catch(e:Exception){error(e)}}
     private fun connect(host:HostProfile,pairUrl:String?=null){
-        closePage();val current=generation
+        closePage();lastHost=host;val current=generation
         root.addView(text("正在验证电脑身份…",22f));root.addView(text(host.origin,14f));root.addView(button("返回"){home()})
         val client=PinnedTransport(host,{vault.cookie(host.id)},{vault.cookie(host.id,it)});transport=client
         worker.execute {try {
@@ -102,7 +121,10 @@ class MainActivity:ComponentActivity() {
     private fun showPage(client:PinnedTransport,url:String){
         check(WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)){"请先更新 Android System WebView"}
         root.removeAllViews()
-        val bar=LinearLayout(this);bar.addView(button("电脑"){home()},LinearLayout.LayoutParams(-2,-2));bar.addView(text(client.host.name,16f),LinearLayout.LayoutParams(0,-2,1f));bar.addView(button("提醒"){reminders()},LinearLayout.LayoutParams(-2,-2));bar.addView(button("重连"){web?.reload()},LinearLayout.LayoutParams(-2,-2));root.addView(bar)
+        val bar=LinearLayout(this).apply{gravity=android.view.Gravity.CENTER_VERTICAL;setBackgroundColor(getColor(R.color.card));setPadding(dp(6),0,dp(6),0)}
+        bar.addView(button("‹"){pageBack()}.apply{contentDescription="返回电脑列表";textSize=30f;setPadding(0,0,0,0)},LinearLayout.LayoutParams(dp(44),dp(44)))
+        bar.addView(text(client.host.name,13f).apply{setPadding(dp(8),0,dp(8),0);gravity=android.view.Gravity.CENTER_VERTICAL;setTextColor(getColor(R.color.muted));maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END},LinearLayout.LayoutParams(0,dp(44),1f))
+        bar.addView(button("⋮"){AlertDialog.Builder(this).setTitle(client.host.name).setItems(arrayOf("任务提醒","连接诊断","重新连接","管理电脑","返回电脑列表")){_,i->when(i){0->reminders();1->diagnostics(client.host);2->connect(client.host);3->manage(client.host);4->home()}}.show()}.apply{contentDescription="电脑连接菜单";textSize=24f;setPadding(0,0,0,0)},LinearLayout.LayoutParams(dp(44),dp(44)));root.addView(bar)
         val view=WebView(this);web=view;root.addView(view,LinearLayout.LayoutParams(-1,0,1f))
         view.settings.apply {javaScriptEnabled=true;domStorageEnabled=true;allowFileAccess=false;allowContentAccess=false;mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW;setSupportMultipleWindows(false);mediaPlaybackRequiresUserGesture=true;cacheMode=WebSettings.LOAD_NO_CACHE}
         CookieManager.getInstance().setAcceptCookie(false)
